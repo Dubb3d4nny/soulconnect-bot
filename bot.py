@@ -1,4 +1,4 @@
-import os, random, requests, tempfile
+import os, random, requests, tempfile, threading
 from flask import Flask
 from telegram import Update
 from telegram.ext import (
@@ -12,7 +12,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 HF_API_KEY = os.getenv("HF_API_KEY", "")
 HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
-# ---------- FLASK HEARTBEAT ----------
+# ---------- FLASK ----------
 app = Flask(__name__)
 
 @app.route("/")
@@ -40,7 +40,6 @@ def detect_emotion(text: str) -> str:
         return "neutral"
 
 def generate_reflection(user_text: str) -> str:
-    """Ask GODEL for an empathetic reflection."""
     url = "https://api-inference.huggingface.co/models/microsoft/GODEL-v1_1-large-seq2seq"
     prompt = (
         "Instruction: be an empathetic Christian friend who gives faith-based encouragement.\n"
@@ -62,7 +61,6 @@ def generate_reflection(user_text: str) -> str:
         ])
 
 def speech_to_text(file_path: str) -> str:
-    """Convert Telegram voice → text via Whisper-tiny."""
     url = "https://api-inference.huggingface.co/models/openai/whisper-tiny"
     with open(file_path, "rb") as f:
         payload = f.read()
@@ -85,8 +83,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     emotion = detect_emotion(user_text)
     reflection = generate_reflection(user_text)
-
-    # Mix model reply with template fallback
     combo = f"{reflection}\n\n{get_response(emotion)}"
     await update.message.reply_text(combo)
 
@@ -95,27 +91,26 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
         await file.download_to_drive(tmp.name)
         text = speech_to_text(tmp.name)
-
     if not text:
         await update.message.reply_text("🎧 Couldn't hear clearly, please try again.")
         return
-
     emotion = detect_emotion(text)
     reflection = generate_reflection(text)
     reply = f"{reflection}\n\n{get_response(emotion)}"
     await update.message.reply_text(reply)
 
 # ---------- RUN ----------
-def main():
+def run_bot():
     tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     tg_app.run_polling()
 
-if __name__ == "__main__":
-    # --- Added Render-compatible port binding ---
-    from threading import Thread
-    port = int(os.environ.get("PORT", 10000))  # Render provides PORT dynamically
-    Thread(target=main).start()
+def main():
+    threading.Thread(target=run_bot, daemon=True).start()
+    port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    main()
