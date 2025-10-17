@@ -1,5 +1,5 @@
-import os, random, requests, tempfile, threading
-from flask import Flask
+import os, random, requests, tempfile
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
@@ -24,7 +24,6 @@ def heartbeat():
     return "💓 alive"
 
 # ---------- HUGGING FACE HELPERS ----------
-
 def detect_emotion(text: str) -> str:
     url = "https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base"
     try:
@@ -72,7 +71,6 @@ def speech_to_text(file_path: str) -> str:
         return ""
 
 # ---------- TELEGRAM HANDLERS ----------
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
@@ -100,17 +98,29 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 # ---------- RUN ----------
-def run_bot():
+def main():
+    port = int(os.getenv("PORT", 10000))
+    app_url = f"https://{os.getenv('RENDER_EXTERNAL_URL', 'soulconnect.onrender.com')}"
+    webhook_url = f"{app_url}/{BOT_TOKEN}"
+
     tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    tg_app.run_polling()
 
-def main():
-    threading.Thread(target=run_bot, daemon=True).start()
-    port = int(os.getenv("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # Telegram webhook endpoint
+    @app.post(f"/{BOT_TOKEN}")
+    async def telegram_webhook():
+        update = Update.de_json(request.get_json(force=True), tg_app.bot)
+        await tg_app.process_update(update)
+        return "ok", 200
+
+    tg_app.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path=BOT_TOKEN,
+        webhook_url=webhook_url,
+    )
 
 if __name__ == "__main__":
     main()
