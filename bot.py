@@ -1,4 +1,4 @@
-import os, random, requests, tempfile, asyncio, time
+import os, random, requests, tempfile, threading, asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -103,6 +103,10 @@ tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
+# ---------- START TELEGRAM LOOP ----------
+def run_telegram():
+    tg_app.run_polling(stop_signals=None)
+
 # ---------- WEBHOOK ROUTE ----------
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
@@ -115,23 +119,21 @@ def telegram_webhook():
         print("⚠️ Webhook processing error:", e)
         return "error", 500
 
-# ---------- STARTUP ----------
-async def set_webhook():
+# ---------- MAIN ----------
+def main():
+    threading.Thread(target=run_telegram, daemon=True).start()  # Start bot loop in background
     app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
     webhook_url = f"{app_url}/{BOT_TOKEN}"
-    for attempt in range(3):
-        try:
-            ok = await tg_app.bot.set_webhook(url=webhook_url)
-            if ok:
-                print(f"✅ Webhook set: {webhook_url}")
-                return
-        except Exception as e:
-            print(f"❌ Webhook attempt {attempt+1} failed:", e)
-            await asyncio.sleep(3)
 
-def main():
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(set_webhook())
+    # set webhook
+    import time
+    time.sleep(3)
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(tg_app.bot.set_webhook(url=webhook_url))
+    print(f"✅ Webhook set: {webhook_url}")
+
     port = int(os.getenv("PORT", 10000))
     print(f"🌍 Running Flask on port {port}")
     app.run(host="0.0.0.0", port=port)
