@@ -114,4 +114,8 @@ def main():
     tg_app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    # --- Added Render-compatible port binding ---
+    from threading import Thread
+    port = int(os.environ.get("PORT", 10000))  # Render provides PORT dynamically
+    Thread(target=main).start()
+    app.run(host="0.0.0.0", port=port)
