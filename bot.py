@@ -70,7 +70,9 @@ def speech_to_text(file_path: str) -> str:
     except Exception:
         return ""
 
-# ---------- TELEGRAM HANDLERS ----------
+# ---------- TELEGRAM ----------
+tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
@@ -97,57 +99,42 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = f"{reflection}\n\n{get_response(emotion)}"
     await update.message.reply_text(reply)
 
-# ---------- RUN ----------
-async def run():
-    port = int(os.getenv("PORT", 10000))
-    tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
-    tg_app.add_handler(CommandHandler("start", start))
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+tg_app.add_handler(CommandHandler("start", start))
+tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    @app.post(f"/{BOT_TOKEN}")
-    async def telegram_webhook():
-        update = Update.de_json(request.get_json(force=True), tg_app.bot)
-        await tg_app.process_update(update)
-        return "ok", 200
-
-    # Wait for Render to expose the public URL
-    app_url = None
-    for i in range(15):
-        raw = os.getenv("RENDER_EXTERNAL_URL")
-        if raw and raw.startswith("https://"):
-            app_url = raw.rstrip("/")
-            break
-        print("⏳ Waiting for Render public URL...")
-        time.sleep(2)
-
-    if not app_url:
-        app_url = "https://soulconnect.onrender.com"  # fallback
-    webhook_url = f"{app_url}/{BOT_TOKEN}"
-    print(f"📡 Using webhook URL: {webhook_url}")
-
-    # Verify the URL before setting it
+# ---------- WEBHOOK ROUTE ----------
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
     try:
-        r = requests.get(app_url, timeout=5)
-        print(f"🌐 Webhook domain check: {r.status_code}")
+        data = request.get_json(force=True)
+        update = Update.de_json(data, tg_app.bot)
+        asyncio.run_coroutine_threadsafe(tg_app.process_update(update), tg_app.application.loop)
+        return "ok", 200
     except Exception as e:
-        print("⚠️ Could not verify domain:", e)
+        print("⚠️ Webhook processing error:", e)
+        return "error", 500
 
-    # Retry setting webhook
+# ---------- STARTUP ----------
+async def set_webhook():
+    app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
+    webhook_url = f"{app_url}/{BOT_TOKEN}"
     for attempt in range(3):
         try:
             ok = await tg_app.bot.set_webhook(url=webhook_url)
             if ok:
-                print("✅ Webhook successfully set.")
-                break
+                print(f"✅ Webhook set: {webhook_url}")
+                return
         except Exception as e:
-            print(f"❌ Attempt {attempt+1} failed: {e}")
+            print(f"❌ Webhook attempt {attempt+1} failed:", e)
             await asyncio.sleep(3)
 
-    app.run(host="0.0.0.0", port=port)
-
 def main():
-    asyncio.run(run())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(set_webhook())
+    port = int(os.getenv("PORT", 10000))
+    print(f"🌍 Running Flask on port {port}")
+    app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     main()
