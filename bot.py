@@ -1,4 +1,4 @@
-import os, random, requests, tempfile
+import os, random, requests, tempfile, asyncio, time
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -98,29 +98,56 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 # ---------- RUN ----------
-def main():
+async def run():
     port = int(os.getenv("PORT", 10000))
-    app_url = f"https://{os.getenv('RENDER_EXTERNAL_URL', 'soulconnect.onrender.com')}"
-    webhook_url = f"{app_url}/{BOT_TOKEN}"
-
     tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    # Telegram webhook endpoint
     @app.post(f"/{BOT_TOKEN}")
     async def telegram_webhook():
         update = Update.de_json(request.get_json(force=True), tg_app.bot)
         await tg_app.process_update(update)
         return "ok", 200
 
-    tg_app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=BOT_TOKEN,
-        webhook_url=webhook_url,
-    )
+    # Wait for Render to expose the public URL
+    app_url = None
+    for i in range(15):
+        raw = os.getenv("RENDER_EXTERNAL_URL")
+        if raw and raw.startswith("https://"):
+            app_url = raw.rstrip("/")
+            break
+        print("⏳ Waiting for Render public URL...")
+        time.sleep(2)
+
+    if not app_url:
+        app_url = "https://soulconnect.onrender.com"  # fallback
+    webhook_url = f"{app_url}/{BOT_TOKEN}"
+    print(f"📡 Using webhook URL: {webhook_url}")
+
+    # Verify the URL before setting it
+    try:
+        r = requests.get(app_url, timeout=5)
+        print(f"🌐 Webhook domain check: {r.status_code}")
+    except Exception as e:
+        print("⚠️ Could not verify domain:", e)
+
+    # Retry setting webhook
+    for attempt in range(3):
+        try:
+            ok = await tg_app.bot.set_webhook(url=webhook_url)
+            if ok:
+                print("✅ Webhook successfully set.")
+                break
+        except Exception as e:
+            print(f"❌ Attempt {attempt+1} failed: {e}")
+            await asyncio.sleep(3)
+
+    app.run(host="0.0.0.0", port=port)
+
+def main():
+    asyncio.run(run())
 
 if __name__ == "__main__":
     main()
