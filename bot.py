@@ -73,6 +73,9 @@ def speech_to_text(file_path: str) -> str:
 # ---------- TELEGRAM ----------
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+# Initialize the Telegram app before using process_update
+asyncio.run(tg_app.initialize())
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
@@ -111,8 +114,12 @@ def telegram_webhook():
         print("📩 Incoming update:", data)
         update = Update.de_json(data, tg_app.bot)
 
-        # Run async Telegram handler safely inside Flask
-        asyncio.run(tg_app.process_update(update))
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(tg_app.process_update(update))
+        else:
+            asyncio.run(tg_app.process_update(update))
+
         return "ok", 200
     except Exception as e:
         print("⚠️ Webhook processing error:", e)
