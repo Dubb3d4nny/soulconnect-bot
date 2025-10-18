@@ -12,6 +12,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 HF_API_KEY = os.getenv("HF_API_KEY", "")
 HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
+# ---------- GLOBAL EVENT LOOP ----------
+# This loop stays open the entire app lifetime
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 # ---------- FLASK ----------
 app = Flask(__name__)
 
@@ -73,8 +78,8 @@ def speech_to_text(file_path: str) -> str:
 # ---------- TELEGRAM ----------
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Initialize Telegram app once
-asyncio.run(tg_app.initialize())
+# Initialize Telegram application ONCE
+loop.run_until_complete(tg_app.initialize())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -111,15 +116,8 @@ tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 def telegram_webhook():
     try:
         data = request.get_json(force=True)
-        print("📩 Incoming update:", data)
         update = Update.de_json(data, tg_app.bot)
-
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(tg_app.process_update(update))
-        else:
-            asyncio.run(tg_app.process_update(update))
-
+        loop.create_task(tg_app.process_update(update))
         return "ok", 200
     except Exception as e:
         print("⚠️ Webhook processing error:", e)
@@ -132,10 +130,6 @@ def main():
     app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
     webhook_url = f"{app_url}/{BOT_TOKEN}"
 
-    # ✅ keep loop open to prevent “event loop closed”
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
     async def setup_webhook():
         try:
             await tg_app.bot.delete_webhook(drop_pending_updates=True)
@@ -145,7 +139,8 @@ def main():
             print("⚠️ Failed to set webhook:", e)
             traceback.print_exc()
 
-    loop.run_until_complete(setup_webhook())
+    # run inside global loop that never closes
+    loop.create_task(setup_webhook())
 
     print(f"🌍 Running Flask on port {port}")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
