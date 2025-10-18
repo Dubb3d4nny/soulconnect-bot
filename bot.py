@@ -118,7 +118,7 @@ def telegram_webhook():
         if loop.is_running():
             loop.create_task(tg_app.process_update(update))
         else:
-            asyncio.run(tg_app.process_update(update))
+            loop.run_until_complete(tg_app.process_update(update))
 
         return "ok", 200
     except Exception as e:
@@ -132,7 +132,7 @@ def main():
     app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
     webhook_url = f"{app_url}/{BOT_TOKEN}"
 
-    # ✅ keep loop open to prevent "event loop closed"
+    # ✅ Keep event loop open to avoid “Event loop is closed”
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
