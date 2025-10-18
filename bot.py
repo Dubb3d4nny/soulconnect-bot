@@ -10,7 +10,6 @@ from telegram.ext import (
     MessageHandler, ContextTypes, filters
 )
 from responses import get_response
-import uvicorn
 
 # ---------- ENV ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -21,11 +20,11 @@ HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 app = FastAPI()
 
 @app.get("/")
-async def home():
-    return {"status": "🕊️ SoulConnect running."}
+def home():
+    return {"message": "🕊️ SoulConnect running."}
 
 @app.get("/heartbeat")
-async def heartbeat():
+def heartbeat():
     return {"status": "💓 alive"}
 
 # ---------- HUGGING FACE HELPERS ----------
@@ -75,7 +74,9 @@ def speech_to_text(file_path: str) -> str:
     except Exception:
         return ""
 
-# ---------- TELEGRAM HANDLERS ----------
+# ---------- TELEGRAM BOT ----------
+tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
@@ -102,21 +103,30 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = f"{reflection}\n\n{get_response(emotion)}"
     await update.message.reply_text(reply)
 
-# ---------- MAIN ----------
-def main():
-    # Telegram bot setup
-    tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
-    tg_app.add_handler(CommandHandler("start", start))
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+tg_app.add_handler(CommandHandler("start", start))
+tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    # Run Telegram long polling in a background thread
-    import threading
-    threading.Thread(target=tg_app.run_polling, daemon=True).start()
+# ---------- LONG POLLING SETUP ----------
+async def run_bot():
+    # Initialize and start polling
+    await tg_app.initialize()
+    print("✅ Telegram bot initialized, starting long polling...")
+    await tg_app.start()
+    await tg_app.updater.start_polling()  # for PTB 20+ long polling
+    await tg_app.updater.idle()  # keep it running
 
-    # Run FastAPI for heartbeat/uptimerobot
-    port = int(os.getenv("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
+# ---------- START EVERYTHING ----------
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    import threading
+
+    # Run FastAPI in a thread
+    def start_api():
+        port = int(os.getenv("PORT", 10000))
+        uvicorn.run("bot:app", host="0.0.0.0", port=port, log_level="info", reload=False)
+
+    threading.Thread(target=start_api, daemon=True).start()
+
+    # Run Telegram long polling in the main thread
+    asyncio.run(run_bot())
