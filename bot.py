@@ -3,7 +3,6 @@ import random
 import requests
 import tempfile
 import asyncio
-import threading
 from fastapi import FastAPI
 from telegram import Update
 from telegram.ext import (
@@ -30,9 +29,11 @@ def heartbeat():
 
 # ---------- HUGGING FACE HELPERS ----------
 def detect_emotion(text: str) -> str:
-    url = "https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base"
     try:
-        res = requests.post(url, headers=HEADERS, json={"inputs": text}, timeout=20)
+        res = requests.post(
+            "https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base",
+            headers=HEADERS, json={"inputs": text}, timeout=20
+        )
         data = res.json()[0]
         label = max(data, key=lambda x: x["score"])["label"].lower()
         if "sad" in label: return "sadness"
@@ -44,20 +45,20 @@ def detect_emotion(text: str) -> str:
         return "neutral"
 
 def generate_reflection(user_text: str) -> str:
-    url = "https://api-inference.huggingface.co/models/microsoft/GODEL-v1_1-large-seq2seq"
     prompt = (
         "Instruction: be an empathetic Christian friend who gives faith-based encouragement.\n"
         f"Input: {user_text}\n"
         "Output:"
     )
     try:
-        r = requests.post(url, headers=HEADERS, json={"inputs": prompt}, timeout=45)
+        r = requests.post(
+            "https://api-inference.huggingface.co/models/microsoft/GODEL-v1_1-large-seq2seq",
+            headers=HEADERS, json={"inputs": prompt}, timeout=45
+        )
         data = r.json()
         if isinstance(data, list):
-            text = data[0].get("generated_text", "")
-        else:
-            text = data.get("generated_text", "")
-        return text.strip()
+            return data[0].get("generated_text", "").strip()
+        return data.get("generated_text", "").strip()
     except Exception:
         return random.choice([
             "💭 God understands even the words you can’t speak. You’re loved.",
@@ -65,13 +66,14 @@ def generate_reflection(user_text: str) -> str:
         ])
 
 def speech_to_text(file_path: str) -> str:
-    url = "https://api-inference.huggingface.co/models/openai/whisper-tiny"
-    with open(file_path, "rb") as f:
-        payload = f.read()
     try:
-        r = requests.post(url, headers=HEADERS, data=payload, timeout=60)
-        data = r.json()
-        return data.get("text", "")
+        with open(file_path, "rb") as f:
+            payload = f.read()
+        r = requests.post(
+            "https://api-inference.huggingface.co/models/openai/whisper-tiny",
+            headers=HEADERS, data=payload, timeout=60
+        )
+        return r.json().get("text", "")
     except Exception:
         return ""
 
@@ -80,8 +82,7 @@ tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
-        "Tell me what’s on your heart today."
+        "🕊️ Welcome to SoulConnect — a safe place for your soul.\nTell me what’s on your heart today."
     )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,23 +109,9 @@ tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-# ---------- RUN TELEGRAM BOT ----------
-async def run_bot():
-    print("✅ Telegram bot initialized, starting long polling...")
-    await tg_app.run_polling()  # PTB v22+ handles initialize/start internally
-
-# ---------- START EVERYTHING ----------
-if __name__ == "__main__":
-    import uvicorn
-
-    # Run FastAPI in a separate thread
-    def start_api():
-        port = int(os.getenv("PORT", 10000))
-        uvicorn.run("bot:app", host="0.0.0.0", port=port, log_level="info", reload=False)
-
-    threading.Thread(target=start_api, daemon=True).start()
-
-    # Run Telegram bot in main thread using running event loop
-    loop = asyncio.get_event_loop()
-    loop.create_task(run_bot())
-    loop.run_forever()
+# ---------- START TELEGRAM BOT AS BACKGROUND TASK ----------
+@app.on_event("startup")
+async def start_telegram_bot():
+    # run_polling does initialize/start automatically
+    asyncio.create_task(tg_app.run_polling())
+    print("✅ Telegram bot initialized and polling in background.")
