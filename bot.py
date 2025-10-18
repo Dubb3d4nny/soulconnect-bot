@@ -72,8 +72,6 @@ def speech_to_text(file_path: str) -> str:
 
 # ---------- TELEGRAM ----------
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-# Initialize Telegram application
 asyncio.run(tg_app.initialize())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,7 +116,7 @@ def telegram_webhook():
         if loop.is_running():
             loop.create_task(tg_app.process_update(update))
         else:
-            loop.run_until_complete(tg_app.process_update(update))
+            asyncio.run(tg_app.process_update(update))
 
         return "ok", 200
     except Exception as e:
@@ -132,23 +130,17 @@ def main():
     app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
     webhook_url = f"{app_url}/{BOT_TOKEN}"
 
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    asyncio.set_event_loop(loop)
-
     async def setup_webhook():
         try:
             await tg_app.bot.delete_webhook(drop_pending_updates=True)
-            success = await tg_app.bot.set_webhook(url=webhook_url)
-            if success:
-                print(f"✅ Webhook set to: {webhook_url}")
-            else:
-                print("⚠️ Telegram did not confirm webhook setup!")
+            ok = await tg_app.bot.set_webhook(url=webhook_url)
+            print(f"✅ Webhook set: {ok} → {webhook_url}")
         except Exception as e:
             print("⚠️ Failed to set webhook:", e)
             traceback.print_exc()
 
-    # Run setup synchronously before Flask starts
-    loop.run_until_complete(setup_webhook())
+    # 🔧 runs webhook setup safely in its own loop
+    asyncio.run(setup_webhook())
 
     print(f"🌍 Running Flask on port {port}")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
