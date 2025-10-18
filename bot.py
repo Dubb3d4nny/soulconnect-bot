@@ -13,7 +13,6 @@ HF_API_KEY = os.getenv("HF_API_KEY", "")
 HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
 # ---------- GLOBAL EVENT LOOP ----------
-# This loop stays open the entire app lifetime
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -77,8 +76,6 @@ def speech_to_text(file_path: str) -> str:
 
 # ---------- TELEGRAM ----------
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-# Initialize Telegram application ONCE
 loop.run_until_complete(tg_app.initialize())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -136,10 +133,12 @@ def main():
             ok = await tg_app.bot.set_webhook(url=webhook_url)
             print(f"✅ Webhook set: {ok} → {webhook_url}")
         except Exception as e:
-            print("⚠️ Failed to set webhook:", e)
+            print("⚠️ Failed to set webhook, falling back to polling:", e)
             traceback.print_exc()
+            # Start polling as fallback
+            loop.create_task(tg_app.run_polling())
 
-    # run inside global loop that never closes
+    # Run webhook setup inside the global loop
     loop.create_task(setup_webhook())
 
     print(f"🌍 Running Flask on port {port}")
