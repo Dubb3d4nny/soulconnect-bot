@@ -104,13 +104,15 @@ tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
 # ---------- TELEGRAM WEBHOOK ----------
-@app.post(f"/{BOT_TOKEN}")
-async def telegram_webhook():
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
     try:
         data = request.get_json(force=True)
         print("📩 Incoming update:", data)
         update = Update.de_json(data, tg_app.bot)
-        await tg_app.process_update(update)
+
+        # Run async Telegram handler safely inside Flask
+        asyncio.run(tg_app.process_update(update))
         return "ok", 200
     except Exception as e:
         print("⚠️ Webhook processing error:", e)
