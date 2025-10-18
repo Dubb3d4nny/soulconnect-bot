@@ -107,14 +107,10 @@ tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-# ---------- LONG POLLING SETUP ----------
+# ---------- LONG POLLING ----------
 async def run_bot():
-    # Initialize and start polling
-    await tg_app.initialize()
     print("✅ Telegram bot initialized, starting long polling...")
-    await tg_app.start()
-    await tg_app.updater.start_polling()  # for PTB 20+ long polling
-    await tg_app.updater.idle()  # keep it running
+    await tg_app.run_polling()  # PTB v22 handles initialize/start internally
 
 # ---------- START EVERYTHING ----------
 if __name__ == "__main__":
@@ -124,9 +120,9 @@ if __name__ == "__main__":
     # Run FastAPI in a thread
     def start_api():
         port = int(os.getenv("PORT", 10000))
-        uvicorn.run("bot:app", host="0.0.0.0", port=port, log_level="info", reload=False)
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
     threading.Thread(target=start_api, daemon=True).start()
 
-    # Run Telegram long polling in the main thread
+    # Run Telegram bot in main thread
     asyncio.run(run_bot())
