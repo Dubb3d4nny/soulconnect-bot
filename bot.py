@@ -1,4 +1,4 @@
-import os, random, requests, tempfile, asyncio
+import os, random, requests, tempfile, asyncio, traceback
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -108,11 +108,13 @@ tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 async def telegram_webhook():
     try:
         data = request.get_json(force=True)
+        print("📩 Incoming update:", data)
         update = Update.de_json(data, tg_app.bot)
         await tg_app.process_update(update)
         return "ok", 200
     except Exception as e:
         print("⚠️ Webhook processing error:", e)
+        print(traceback.format_exc())
         return "error", 500
 
 # ---------- MAIN ----------
@@ -122,9 +124,12 @@ def main():
     webhook_url = f"{app_url}/{BOT_TOKEN}"
 
     async def setup_webhook():
-        await tg_app.bot.delete_webhook(drop_pending_updates=True)
-        await tg_app.bot.set_webhook(url=webhook_url)
-        print(f"✅ Webhook set to: {webhook_url}")
+        try:
+            await tg_app.bot.delete_webhook(drop_pending_updates=True)
+            await tg_app.bot.set_webhook(url=webhook_url)
+            print(f"✅ Webhook set to: {webhook_url}")
+        except Exception as e:
+            print("⚠️ Failed to set webhook:", e)
 
     asyncio.run(setup_webhook())
 
