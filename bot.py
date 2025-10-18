@@ -3,6 +3,7 @@ import random
 import requests
 import tempfile
 import asyncio
+import threading
 from fastapi import FastAPI
 from telegram import Update
 from telegram.ext import (
@@ -107,22 +108,23 @@ tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-# ---------- LONG POLLING ----------
+# ---------- RUN TELEGRAM BOT ----------
 async def run_bot():
     print("✅ Telegram bot initialized, starting long polling...")
-    await tg_app.run_polling()  # PTB v22 handles initialize/start internally
+    await tg_app.run_polling()  # PTB v22+ handles initialize/start internally
 
 # ---------- START EVERYTHING ----------
 if __name__ == "__main__":
     import uvicorn
-    import threading
 
-    # Run FastAPI in a thread
+    # Run FastAPI in a separate thread
     def start_api():
         port = int(os.getenv("PORT", 10000))
-        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+        uvicorn.run("bot:app", host="0.0.0.0", port=port, log_level="info", reload=False)
 
     threading.Thread(target=start_api, daemon=True).start()
 
-    # Run Telegram bot in main thread
-    asyncio.run(run_bot())
+    # Run Telegram bot in main thread using running event loop
+    loop = asyncio.get_event_loop()
+    loop.create_task(run_bot())
+    loop.run_forever()
