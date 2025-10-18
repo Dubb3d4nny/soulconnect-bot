@@ -132,8 +132,8 @@ def main():
     app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
     webhook_url = f"{app_url}/{BOT_TOKEN}"
 
-    # ✅ Keep event loop open to avoid “Event loop is closed”
-    loop = asyncio.new_event_loop()
+    # ✅ Persistent loop that never closes automatically
+    loop = asyncio.get_event_loop_policy().new_event_loop()
     asyncio.set_event_loop(loop)
 
     async def setup_webhook():
@@ -144,10 +144,11 @@ def main():
         except Exception as e:
             print("⚠️ Failed to set webhook:", e)
 
-    loop.run_until_complete(setup_webhook())
+    # Schedule setup without closing loop
+    loop.create_task(setup_webhook())
 
     print(f"🌍 Running Flask on port {port}")
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 if __name__ == "__main__":
     main()
