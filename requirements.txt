@@ -1,5 +1,5 @@
-python-telegram-bot==22.5
+python-telegram-bot[webhooks]==22.5
 fastapi==0.111.0
-uvicorn==0.25.0
+uvicorn==0.27.0
 requests==2.31.0
 gTTS==2.3.2
