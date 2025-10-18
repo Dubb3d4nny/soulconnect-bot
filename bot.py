@@ -15,7 +15,7 @@ HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
 # ---------- FLASK ----------
 
-app = Flask(**name**)
+app = Flask(__name__)
 
 @app.route("/")
 def home():
