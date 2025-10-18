@@ -1,4 +1,9 @@
-import os, random, requests, tempfile, asyncio, traceback
+import os
+import random
+import requests
+import tempfile
+import asyncio
+import traceback
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -6,6 +11,7 @@ from telegram.ext import (
     MessageHandler, ContextTypes, filters
 )
 from responses import get_response
+from concurrent.futures import CancelledError
 
 # ---------- ENV ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -77,10 +83,9 @@ def speech_to_text(file_path: str) -> str:
 # ---------- TELEGRAM ----------
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Initialize Telegram application once
+# Initialize Telegram app once
 loop.run_until_complete(tg_app.initialize())
 
-# ---------- HANDLERS ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
@@ -117,18 +122,42 @@ def telegram_webhook():
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, tg_app.bot)
-        loop.create_task(tg_app.process_update(update))
+
+        # Run async Telegram handler in global loop
+        future = asyncio.run_coroutine_threadsafe(tg_app.process_update(update), loop)
+        try:
+            future.result(timeout=10)  # wait max 10 seconds
+        except CancelledError:
+            print("⚠️ Telegram update processing was cancelled")
+        except Exception as e:
+            print("⚠️ Error while processing Telegram update:", e)
+            traceback.print_exc()
+
         return "ok", 200
     except Exception as e:
         print("⚠️ Webhook processing error:", e)
-        print(traceback.format_exc())
+        traceback.print_exc()
         return "error", 500
 
 # ---------- MAIN ----------
 def main():
     port = int(os.getenv("PORT", 10000))
+    app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
+    webhook_url = f"{app_url}/{BOT_TOKEN}"
+
+    async def setup_webhook():
+        try:
+            await tg_app.bot.delete_webhook(drop_pending_updates=True)
+            ok = await tg_app.bot.set_webhook(url=webhook_url)
+            print(f"✅ Webhook set: {ok} → {webhook_url}")
+        except Exception as e:
+            print("⚠️ Failed to set webhook:", e)
+            traceback.print_exc()
+
+    # Schedule webhook setup in global loop
+    loop.create_task(setup_webhook())
+
     print(f"🌍 Running Flask on port {port}")
-    # Disable reloader to keep loop alive
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 if __name__ == "__main__":
