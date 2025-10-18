@@ -1,4 +1,4 @@
-import os, random, requests, tempfile, asyncio, traceback, time
+import os, random, requests, tempfile, asyncio, traceback
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -80,6 +80,7 @@ tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 # Initialize Telegram application once
 loop.run_until_complete(tg_app.initialize())
 
+# ---------- HANDLERS ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
@@ -123,42 +124,11 @@ def telegram_webhook():
         print(traceback.format_exc())
         return "error", 500
 
-# ---------- PERIODIC WEBHOOK CHECK ----------
-async def periodic_webhook_check(webhook_url: str, interval: int = 300):
-    """Checks if webhook is set every `interval` seconds."""
-    while True:
-        try:
-            info = await tg_app.bot.get_webhook_info()
-            if info.url != webhook_url:
-                await tg_app.bot.set_webhook(url=webhook_url)
-                print(f"🔁 Webhook reset → {webhook_url}")
-            else:
-                print(f"✅ Webhook alive → {webhook_url}")
-        except Exception as e:
-            print("⚠️ Webhook check error:", e)
-            traceback.print_exc()
-        await asyncio.sleep(interval)
-
 # ---------- MAIN ----------
 def main():
     port = int(os.getenv("PORT", 10000))
-    app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
-    webhook_url = f"{app_url}/{BOT_TOKEN}"
-
-    # Setup webhook once
-    async def setup_webhook():
-        try:
-            await tg_app.bot.delete_webhook(drop_pending_updates=True)
-            ok = await tg_app.bot.set_webhook(url=webhook_url)
-            print(f"✅ Webhook set: {ok} → {webhook_url}")
-        except Exception as e:
-            print("⚠️ Failed to set webhook:", e)
-            traceback.print_exc()
-
-    loop.create_task(setup_webhook())
-    loop.create_task(periodic_webhook_check(webhook_url))  # keep checking webhook
-
     print(f"🌍 Running Flask on port {port}")
+    # Disable reloader to keep loop alive
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 if __name__ == "__main__":
