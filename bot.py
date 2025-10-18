@@ -3,17 +3,30 @@ import random
 import requests
 import tempfile
 import asyncio
+from fastapi import FastAPI
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
     MessageHandler, ContextTypes, filters
 )
 from responses import get_response
+import uvicorn
 
 # ---------- ENV ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 HF_API_KEY = os.getenv("HF_API_KEY", "")
 HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
+
+# ---------- FASTAPI ----------
+app = FastAPI()
+
+@app.get("/")
+async def home():
+    return {"status": "🕊️ SoulConnect running."}
+
+@app.get("/heartbeat")
+async def heartbeat():
+    return {"status": "💓 alive"}
 
 # ---------- HUGGING FACE HELPERS ----------
 def detect_emotion(text: str) -> str:
@@ -91,14 +104,19 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- MAIN ----------
 def main():
+    # Telegram bot setup
     tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    # Run long polling
-    print("🌍 Starting long polling...")
-    tg_app.run_polling()
+    # Run Telegram long polling in a background thread
+    import threading
+    threading.Thread(target=tg_app.run_polling, daemon=True).start()
+
+    # Run FastAPI for heartbeat/uptimerobot
+    port = int(os.getenv("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     main()
