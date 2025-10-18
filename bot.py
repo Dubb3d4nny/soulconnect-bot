@@ -72,6 +72,8 @@ def speech_to_text(file_path: str) -> str:
 
 # ---------- TELEGRAM ----------
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+# Initialize Telegram app once
 asyncio.run(tg_app.initialize())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,6 +132,10 @@ def main():
     app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
     webhook_url = f"{app_url}/{BOT_TOKEN}"
 
+    # ✅ keep loop open to prevent “event loop closed”
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     async def setup_webhook():
         try:
             await tg_app.bot.delete_webhook(drop_pending_updates=True)
@@ -139,8 +145,7 @@ def main():
             print("⚠️ Failed to set webhook:", e)
             traceback.print_exc()
 
-    # 🔧 runs webhook setup safely in its own loop
-    asyncio.run(setup_webhook())
+    loop.run_until_complete(setup_webhook())
 
     print(f"🌍 Running Flask on port {port}")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
