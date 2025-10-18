@@ -132,20 +132,23 @@ def main():
     app_url = os.getenv("RENDER_EXTERNAL_URL", "https://soulconnect.onrender.com").rstrip("/")
     webhook_url = f"{app_url}/{BOT_TOKEN}"
 
-    # ✅ Persistent loop that never closes automatically
     loop = asyncio.get_event_loop_policy().new_event_loop()
     asyncio.set_event_loop(loop)
 
     async def setup_webhook():
         try:
             await tg_app.bot.delete_webhook(drop_pending_updates=True)
-            await tg_app.bot.set_webhook(url=webhook_url)
-            print(f"✅ Webhook set to: {webhook_url}")
+            success = await tg_app.bot.set_webhook(url=webhook_url)
+            if success:
+                print(f"✅ Webhook set to: {webhook_url}")
+            else:
+                print("⚠️ Telegram did not confirm webhook setup!")
         except Exception as e:
             print("⚠️ Failed to set webhook:", e)
+            traceback.print_exc()
 
-    # Schedule setup without closing loop
-    loop.create_task(setup_webhook())
+    # Run setup synchronously before Flask starts
+    loop.run_until_complete(setup_webhook())
 
     print(f"🌍 Running Flask on port {port}")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
