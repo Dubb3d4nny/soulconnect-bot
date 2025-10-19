@@ -112,6 +112,5 @@ tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 # ---------- START TELEGRAM BOT AS BACKGROUND TASK ----------
 @app.on_event("startup")
 async def start_telegram_bot():
-    # run_polling does initialize/start automatically
     asyncio.create_task(tg_app.run_polling())
     print("✅ Telegram bot initialized and polling in background.")
