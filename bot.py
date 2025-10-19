@@ -53,8 +53,10 @@ def generate_reflection(user_text: str) -> str:
         r = requests.post(url, headers=HEADERS, json={"inputs": prompt}, timeout=45)
         data = r.json()
         if isinstance(data, list):
-            return data[0].get("generated_text", "").strip()
-        return data.get("generated_text", "").strip()
+            text = data[0].get("generated_text", "")
+        else:
+            text = data.get("generated_text", "")
+        return text.strip()
     except Exception:
         return random.choice([
             "💭 God understands even the words you can’t speak. You’re loved.",
@@ -67,7 +69,8 @@ def speech_to_text(file_path: str) -> str:
         payload = f.read()
     try:
         r = requests.post(url, headers=HEADERS, data=payload, timeout=60)
-        return r.json().get("text", "")
+        data = r.json()
+        return data.get("text", "")
     except Exception:
         return ""
 
@@ -84,7 +87,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     emotion = detect_emotion(user_text)
     reflection = generate_reflection(user_text)
-    await update.message.reply_text(f"{reflection}\n\n{get_response(emotion)}")
+    combo = f"{reflection}\n\n{get_response(emotion)}"
+    await update.message.reply_text(combo)
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await update.message.voice.get_file()
@@ -96,18 +100,30 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     emotion = detect_emotion(text)
     reflection = generate_reflection(text)
-    await update.message.reply_text(f"{reflection}\n\n{get_response(emotion)}")
+    reply = f"{reflection}\n\n{get_response(emotion)}"
+    await update.message.reply_text(reply)
 
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-# ---------- LONG POLLING IN BACKGROUND ----------
+# ---------- RUN TELEGRAM LONG POLLING ----------
 async def run_bot():
+    # PTB v22+ handles initialize/start internally in run_polling
     print("✅ Telegram bot initialized, starting long polling...")
     await tg_app.run_polling()
 
-@app.on_event("startup")
-async def startup_event():
-    # Start Telegram bot in background
-    asyncio.create_task(run_bot())
+# ---------- START EVERYTHING ----------
+if __name__ == "__main__":
+    import uvicorn
+    import threading
+
+    # Run FastAPI in a separate thread
+    def start_api():
+        port = int(os.getenv("PORT", 10000))
+        uvicorn.run("bot:app", host="0.0.0.0", port=port, log_level="info", reload=False)
+
+    threading.Thread(target=start_api, daemon=True).start()
+
+    # Run Telegram long polling in the main thread
+    asyncio.run(run_bot())
