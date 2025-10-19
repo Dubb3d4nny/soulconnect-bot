@@ -29,11 +29,9 @@ def heartbeat():
 
 # ---------- HUGGING FACE HELPERS ----------
 def detect_emotion(text: str) -> str:
+    url = "https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base"
     try:
-        res = requests.post(
-            "https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base",
-            headers=HEADERS, json={"inputs": text}, timeout=20
-        )
+        res = requests.post(url, headers=HEADERS, json={"inputs": text}, timeout=20)
         data = res.json()[0]
         label = max(data, key=lambda x: x["score"])["label"].lower()
         if "sad" in label: return "sadness"
@@ -45,16 +43,14 @@ def detect_emotion(text: str) -> str:
         return "neutral"
 
 def generate_reflection(user_text: str) -> str:
+    url = "https://api-inference.huggingface.co/models/microsoft/GODEL-v1_1-large-seq2seq"
     prompt = (
         "Instruction: be an empathetic Christian friend who gives faith-based encouragement.\n"
         f"Input: {user_text}\n"
         "Output:"
     )
     try:
-        r = requests.post(
-            "https://api-inference.huggingface.co/models/microsoft/GODEL-v1_1-large-seq2seq",
-            headers=HEADERS, json={"inputs": prompt}, timeout=45
-        )
+        r = requests.post(url, headers=HEADERS, json={"inputs": prompt}, timeout=45)
         data = r.json()
         if isinstance(data, list):
             return data[0].get("generated_text", "").strip()
@@ -66,13 +62,11 @@ def generate_reflection(user_text: str) -> str:
         ])
 
 def speech_to_text(file_path: str) -> str:
+    url = "https://api-inference.huggingface.co/models/openai/whisper-tiny"
+    with open(file_path, "rb") as f:
+        payload = f.read()
     try:
-        with open(file_path, "rb") as f:
-            payload = f.read()
-        r = requests.post(
-            "https://api-inference.huggingface.co/models/openai/whisper-tiny",
-            headers=HEADERS, data=payload, timeout=60
-        )
+        r = requests.post(url, headers=HEADERS, data=payload, timeout=60)
         return r.json().get("text", "")
     except Exception:
         return ""
@@ -82,15 +76,15 @@ tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🕊️ Welcome to SoulConnect — a safe place for your soul.\nTell me what’s on your heart today."
+        "🕊️ Welcome to SoulConnect — a safe place for your soul.\n"
+        "Tell me what’s on your heart today."
     )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     emotion = detect_emotion(user_text)
     reflection = generate_reflection(user_text)
-    combo = f"{reflection}\n\n{get_response(emotion)}"
-    await update.message.reply_text(combo)
+    await update.message.reply_text(f"{reflection}\n\n{get_response(emotion)}")
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await update.message.voice.get_file()
@@ -102,15 +96,18 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     emotion = detect_emotion(text)
     reflection = generate_reflection(text)
-    reply = f"{reflection}\n\n{get_response(emotion)}"
-    await update.message.reply_text(reply)
+    await update.message.reply_text(f"{reflection}\n\n{get_response(emotion)}")
 
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-# ---------- START TELEGRAM BOT AS BACKGROUND TASK ----------
+# ---------- LONG POLLING IN BACKGROUND ----------
+async def run_bot():
+    print("✅ Telegram bot initialized, starting long polling...")
+    await tg_app.run_polling()
+
 @app.on_event("startup")
-async def start_telegram_bot():
-    asyncio.create_task(tg_app.run_polling())
-    print("✅ Telegram bot initialized and polling in background.")
+async def startup_event():
+    # Start Telegram bot in background
+    asyncio.create_task(run_bot())
