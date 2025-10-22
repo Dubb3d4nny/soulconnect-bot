@@ -1,20 +1,25 @@
 # === Core Bot Dependencies ===
+
 python-telegram-bot[webhooks]==22.5
 fastapi==0.115.0
-uvicorn==0.30.0
-requests==2.31.0
+uvicorn==0.30.6
+requests==2.32.3
 
 # === Audio & Speech Support ===
+
 ffmpeg-python==0.2.0
 pydub==0.25.1
 
 # === Text-to-Speech (optional fallback) ===
+
 gTTS==2.3.2
 
 # === Async & Utilities ===
+
 aiofiles==24.1.0
 httpx==0.27.2
 
 # === Safety & Performance ===
+
 tenacity==8.2.3
 python-dotenv==1.0.1
